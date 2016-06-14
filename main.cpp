@@ -3,11 +3,7 @@
 #include <fstream>
 #include "HE_Signal.h"
 #include <assert.h>
-#include "../HE_Utils.h"
-#include "../HE_Integer.h"
-#include "../FFT.h"
 #include "MyTimer.h"
-#include "../polinoame.h"
 #include "basic_examples.h"
 
 Evaluator* eval;
@@ -16,7 +12,6 @@ BigPoly* public_key;
 BigPoly* secret_key;
 BigPoly* ctxt_of_1;                  // encryption of 1 (constant)
 int		t_bits;
-
 
 void example_signal_processing()
 {
@@ -115,7 +110,51 @@ void codificare_semnal_ca_polinom();
 
 int main()
 {
-	batch_low_param();
+	test_op(true);
+	return 0;
+
+/************************************************************************************/
+	
+	EncryptionParameters parms;
+	BigPoly public_key;
+	BigPoly secret_key;
+	EvaluationKeys evaluation_keys;
+
+	conv_parameter_selection(parms);
+
+	cout << "Encryption parameters specify " << parms.poly_modulus().significant_coeff_count() << " coefficients with "
+		<< parms.coeff_modulus().significant_bit_count() << " bits per coefficient" << endl;
+
+	string coeff = parms.coeff_modulus().to_string();
+	int count = 0;
+
+	for (int i = 0; i < coeff.size(); i++)
+	{
+		if (coeff[i] == 'F')
+		{
+			count++;
+		}
+	}
+
+	cout << endl << "cout_F = " << count << endl << endl;
+
+
+	// SEAL_save_load(true, parms, public_key, secret_key, evaluation_keys);
+
+
+	// seteaza parametrii a.i. BATCHING-UL SA FIE POSIBIL
+	// test_real_conv(parms, public_key, secret_key, evaluation_keys);
+
+	//cout << "Encryption parameters specify " << parms.poly_modulus().significant_coeff_count() << " coefficients with "
+		//<< parms.coeff_modulus().significant_bit_count() << " bits per coefficient" << endl;
+
+	// example_parameter_selection();
+
+	// example_basics();
+
+	// SEAL_eval_max_depth(parms, public_key, secret_key, evaluation_keys);
+
+	// batch_low_param(parms, public_key, secret_key, evaluation_keys);
 
 	// test_homomorphic_conv();
 

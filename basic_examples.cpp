@@ -4,25 +4,85 @@
 #include "MyTimer.h"
 #include <time.h>
 #include "HE_Batch_Signal.h"
+#include <fstream>
+#include <assert.h>
+#include <string>
 
 using namespace std;
 using namespace seal;
 
 
-void batch_low_param()
+/* MMR's helper functions*/
+void generate_parameters(EncryptionParameters &parms, BigPoly &public_key,
+	BigPoly &secret_key, EvaluationKeys &evaluation_keys)
+{
+	// assert(params == setat)
+
+	cout << "Generating keys..." << endl;
+	KeyGenerator generator(parms);
+	generator.generate();
+	cout << "... key generation complete" << endl;
+
+	public_key = generator.public_key();
+	secret_key = generator.secret_key();
+	evaluation_keys = generator.evaluation_keys();
+}
+
+void save_parameters(vector<string> filename, EncryptionParameters &parms, BigPoly &public_key,
+	BigPoly &secret_key, EvaluationKeys &evaluation_keys)
+{
+	ofstream out(filename[0], ios::out | ios::binary);
+	parms.save(out);
+	out.close();
+	out.open(filename[1], ios::out | ios::binary);
+	public_key.save(out);
+	out.close();
+	out.open(filename[2], ios::out | ios::binary);
+	secret_key.save(out);
+	out.close();
+	out.open(filename[3], ios::out | ios::binary);
+	evaluation_keys.save(out);
+	out.close();
+}
+
+void load_parameters(vector<string> filename, EncryptionParameters &parms, BigPoly &public_key,
+	BigPoly &secret_key, EvaluationKeys &evaluation_keys)
+{
+	assert(filename.size() == 4);
+
+	ifstream in(filename[0], ios::in | ios::binary);
+	parms.load(in);
+	in.close();
+	in.open(filename[1], ios::in | ios::binary);
+	public_key.load(in);
+	in.close();
+	in.open(filename[2], ios::in | ios::binary);
+	secret_key.load(in);
+	in.close();
+	in.open(filename[3], ios::in | ios::binary);
+	evaluation_keys.load(in);
+	in.close();
+}
+
+/*********************************************************************************************/
+
+void test_real_conv(EncryptionParameters &parms1, BigPoly &public_key1, BigPoly &secret_key1,
+	EvaluationKeys &evaluation_keys1)
 {
 	MyTimer timer;
+
+//#error 
+	/* calculeaza parametrii pentru batching */
 
 	EncryptionParameters parms;
 	parms.poly_modulus() = "1x^1024 + 1";
 	parms.coeff_modulus() = "3FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFD793F83";
-	// parms.coeff_modulus() = ChooserEvaluator::default_parameter_options().at(2048);
+	// parms.coeff_modulus() = ChooserEvaluator::default_parameter_options().at(1024);
 	parms.plain_modulus() = 1073153;
 	// parms.plain_modulus() = 6507521;
-	parms.decomposition_bit_count() = 32;
+	parms.decomposition_bit_count() = 4;
 	parms.noise_standard_deviation() = ChooserEvaluator::default_noise_standard_deviation();
 	parms.noise_max_deviation() = ChooserEvaluator::default_noise_max_deviation();
-
 	cout << "Generating keys..." << endl;
 	KeyGenerator generator(parms);
 	generator.generate();
@@ -42,26 +102,236 @@ void batch_low_param()
 
 	size_t slot_count = crtbuilder.get_slot_count();
 	cout << "slot_count = " << slot_count << endl;
-	vector<BigUInt> values(slot_count, BigUInt(parms.plain_modulus().bit_count(), static_cast<uint64_t>(0)));
 
-	values[0] = 255;
+	int esantion = 1;
+	vector<BigUInt> values(slot_count, BigUInt(parms.plain_modulus().bit_count(), static_cast<uint64_t>(esantion)));
+
 	BigPoly plain_composed_poly = crtbuilder.compose(values);
+
 	BigPoly crt_ctxt = encryptor.encrypt(plain_composed_poly);
 
-	timer.start_timer();
-
 	crt_ctxt = evaluator.multiply(crt_ctxt, crt_ctxt);
-	vector<BigPoly> coloana(15, crt_ctxt);
-	crt_ctxt = evaluator.add_many(coloana);
-
-	cout << "Timp inmultire batch CU reliniarizare = " << timer.stop_timer() / 20 << endl << endl;
+	esantion *= esantion;
 
 	BigPoly decrypted = decryptor.decrypt(crt_ctxt);
+	if (crtbuilder.get_slot(decrypted, 0).to_double() != esantion)
+	{
+		cout << "Eroare la prima inmultire." << endl;
+	}
 
-	// for (int i = 0; i < slot_count; i++)
-	// {
-		cout << "Slot val = " << crtbuilder.get_slot(decrypted, 0).to_double() << endl;
-	// }
+	// timer.start_timer();
+
+	vector<BigUInt> masca(slot_count, BigUInt(parms.plain_modulus().bit_count(), static_cast<uint64_t>(1)));
+	masca[0] = 0;
+
+	cout << endl << endl;
+
+	esantion = 0;
+	BigPoly result = crt_ctxt;
+	bool ok = true;
+	for (int i = 0; i < 15; i++)
+	{
+		BigPoly masca_coeff_poly = crtbuilder.compose(masca); // // Use PolyCRTBuilder to compose plain_coeff_vector into a polynomial
+		result = evaluator.multiply_plain(result, masca_coeff_poly); 
+		result = evaluator.add(result, crt_ctxt); esantion += 1 * 1;
+
+		decrypted = decryptor.decrypt(result);
+		for (int j = 0; j < 15; j++)
+		{
+			int res = crtbuilder.get_slot(decrypted, j).to_double();
+			cout << res << " ";
+		}
+		cout << endl;
+		for (int j = 0; j < 15; j++)
+		{
+			int res = crtbuilder.get_slot(masca_coeff_poly, j).to_double();
+			cout << res << " ";
+		}
+		cout << endl << endl;
+		// int res = crtbuilder.get_slot(decrypted, 0).to_double();
+		// if ( res != esantion)
+		// {
+			// cout << "plain_0[" << i << "] = " << res << endl;
+			// cout << "masca0 = " << masca[0].to_double() << endl;
+			// cout << "Eroare la iteratia " << i << endl;
+			ok = false;
+			// break;
+		// }
+
+		masca[i] = 1;
+		if (i + 1 < masca.size())
+		{
+			masca[i + 1] = 0;
+		}
+	}
+
+	if (ok == true)
+	{
+		decrypted = decryptor.decrypt(crt_ctxt);
+
+		int res = crtbuilder.get_slot(decrypted, 0).to_double();
+
+		if ( res != 255 * 255 * 15)
+		{
+			cout << "Rezultat final = " << res << endl;
+			cout << "Eroare la rezultatul final." << endl;
+		}
+		else
+		{
+			cout << "GREAT SUCCES :)" << endl;
+		}
+	}
+}
+
+
+void SEAL_eval_max_depth(EncryptionParameters &parms, BigPoly &public_key, BigPoly &secret_key,
+	EvaluationKeys &evaluation_keys)
+{
+	MyTimer timer;
+
+	/*EncryptionParameters parms;
+	parms.poly_modulus() = "1x^1024 + 1";
+	// parms.coeff_modulus() = "3FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFD793F83";
+	parms.coeff_modulus() = ChooserEvaluator::default_parameter_options().at(1024);
+	parms.plain_modulus() = 1 << 8;      //  6507521;
+	parms.decomposition_bit_count() = 32;
+	parms.noise_standard_deviation() = ChooserEvaluator::default_noise_standard_deviation();
+	parms.noise_max_deviation() = ChooserEvaluator::default_noise_max_deviation();
+
+	cout << "Generating keys..." << endl;
+	KeyGenerator generator(parms);
+	generator.generate();
+	cout << "... key generation complete" << endl;
+	BigPoly public_key = generator.public_key();
+	BigPoly secret_key = generator.secret_key();
+	EvaluationKeys evaluation_keys = generator.evaluation_keys();*/
+
+	// Create the encryption tools
+	BalancedEncoder encoder(parms.plain_modulus());
+	Encryptor encryptor(parms, public_key);
+	Evaluator evaluator(parms, evaluation_keys);
+	
+
+	BigPoly encoded = encoder.encode(1);
+	BigPoly encrypted = encryptor.encrypt(encoded);
+	BigPoly decrypted;
+	BigPoly product = encrypted;
+
+	for (int i = 0; i < 1024; i++)
+	{
+		Decryptor decryptor(parms, secret_key, 1 + i);
+		decrypted = decryptor.decrypt(product);
+		if (encoder.decode_int32(decrypted) != 1)
+		{
+			cout << "Max mult depth = " << i << endl << endl;
+			break;
+		}
+
+		product = evaluator.multiply_norelin(product, encrypted);
+
+		cout << i << endl;
+	}
+
+	cout << "Final test max depth." << endl << endl;
+}
+
+// maxim 16 adunari de 255*255 pt setarile de mai jos
+void batch_low_param(EncryptionParameters &parms1, BigPoly &public_key1, BigPoly &secret_key1,
+	EvaluationKeys &evaluation_keys1)
+{
+	MyTimer timer;
+
+	EncryptionParameters parms;
+	parms.poly_modulus() = "1x^1024 + 1";
+	parms.coeff_modulus() = "3FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFD793F83";
+	// parms.coeff_modulus() = ChooserEvaluator::default_parameter_options().at(1024);
+	parms.plain_modulus() = 1073153;
+	// parms.plain_modulus() = 6507521;
+	parms.decomposition_bit_count() = 4;
+	parms.noise_standard_deviation() = ChooserEvaluator::default_noise_standard_deviation();
+	parms.noise_max_deviation() = ChooserEvaluator::default_noise_max_deviation();
+	cout << "Generating keys..." << endl;
+	KeyGenerator generator(parms);
+	generator.generate();
+	cout << "... key generation complete" << endl;
+	BigPoly public_key = generator.public_key();
+	BigPoly secret_key = generator.secret_key();
+	EvaluationKeys evaluation_keys = generator.evaluation_keys();
+
+	// Create the encryption tools
+	Encryptor encryptor(parms, public_key);
+	Evaluator evaluator(parms, evaluation_keys);
+	Decryptor decryptor(parms, secret_key);
+
+	cout << "CRT building ..." << endl;
+	PolyCRTBuilder crtbuilder(parms.plain_modulus(), parms.poly_modulus());
+	cout << "CRT finished." << endl;
+
+	size_t slot_count = crtbuilder.get_slot_count();
+	cout << "slot_count = " << slot_count << endl;
+
+	int esantion = 1;
+	vector<BigUInt> values(slot_count, BigUInt(parms.plain_modulus().bit_count(), static_cast<uint64_t>(esantion)));
+
+	vector<BigUInt> masca(slot_count, BigUInt(parms.plain_modulus().bit_count(), static_cast<uint64_t>(1)));
+	masca[0] = 3;
+
+	BigPoly plain_composed_poly = crtbuilder.compose(values);
+
+	BigPoly crt_ctxt = encryptor.encrypt(plain_composed_poly);
+
+	crt_ctxt = evaluator.multiply(crt_ctxt, crt_ctxt);
+	esantion *= esantion;
+
+	BigPoly decrypted = decryptor.decrypt(crt_ctxt);
+	if (crtbuilder.get_slot(decrypted, 0).to_double() != esantion)
+	{
+		cout << "Eroare la prima inmultire." << endl;
+	}
+
+	// timer.start_timer();
+
+	bool ok = true;
+	for (int i = 0; i<8; i++)
+	{
+		BigPoly masca_coeff_poly = crtbuilder.compose(masca); // // Use PolyCRTBuilder to compose plain_coeff_vector into a polynomial
+		BigPoly result = evaluator.multiply_plain(crt_ctxt, masca_coeff_poly);
+		result = evaluator.add(result, crt_ctxt);
+		
+		decrypted = decryptor.decrypt(crt_ctxt);
+
+		if (crtbuilder.get_slot(decrypted, i).to_double() != esantion )
+		{
+			cout << "Eroare la iteratia " << i << endl;
+			ok = false;
+			break;
+		}
+
+		masca[i] = 1;
+		if (i + 1 < masca.size())
+		{
+			masca[i + 1] = 0;
+		}
+	}	
+
+	if (ok == true)
+	{
+		cout << "SUCCES :)" << endl;
+	}
+	
+	// vector<BigPoly> coloana(16, crt_ctxt);
+	// crt_ctxt = evaluator.add_many(coloana);
+
+	// cout << "Timp inmultire batch CU reliniarizare = " << timer.stop_timer() / 20 << endl << endl;
+
+	/*decrypted = decryptor.decrypt(crt_ctxt);
+
+	cout << "crt_ctxt = [ ";
+	for (int i = 0; i < 3; i++)
+	{
+		cout << crtbuilder.get_slot(decrypted, i).to_double() << " ";
+	}
+	cout << "]" << endl;*/
 
 	/*timer.start_timer();
 	for (int i = 0; i < 20; i++)
@@ -74,10 +344,19 @@ void batch_low_param()
 
 void test_homomorphic_conv()
 {
-	HE_Batch_Signal he_signal("1x^4096 + 1");
+	HE_Batch_Signal he_signal("1x^1024 + 1");
 
 	vector<int> filtru(4, 1);
-	vector<int> semnal(4, 2);
+	/*filtru[0] = 0;
+	filtru[1] = 1;
+	filtru[2] = 3;
+	filtru[3] = 2;*/
+
+	vector<int> semnal(4);
+	for (int i = 0; i < 4; i++)
+	{
+		semnal[i] = i;
+	}
 
 	vector<vector<BigPoly> > windows;
 
@@ -91,10 +370,20 @@ void test_homomorphic_conv()
 	vector<int> plain_filtered_signal;
 	he_signal.decrypt_signal(plain_filtered_signal, enc_filtered_signal);
 
+	/*vector<BigPoly> test(1, windows[0][0]);
+	cout << "Semnal decriptat " << endl;
+	vector<int> check;
+	he_signal.decrypt_signal(check, test);
+	for (int i = 0; i < check.size(); i++)
+	{
+		cout << check[i] << endl;
+	}
+	cout << endl;*/
+
 	vector<int> cmp_result;
 	mult_plain_signals(filtru, semnal, cmp_result);
 
-	bool ok = true;
+	/*bool ok = true;
 	for (int i = 0; i < cmp_result.size(); i++)
 	{
 		if (cmp_result[i] != plain_filtered_signal[i])
@@ -110,7 +399,7 @@ void test_homomorphic_conv()
 	if (ok == true)
 	{
 		cout << "SUCCES ! Convolutie corecta.\n";
-	}
+	}*/
 }
 
 void test_reliniarize_after_many_mults()
@@ -436,7 +725,9 @@ void test_mult_time()
 	// parms.decomposition_bit_count() = 32;
 	parms.poly_modulus() = "1x^2048 + 1";
 	parms.coeff_modulus() = ChooserEvaluator::default_parameter_options().at(2048);
-	parms.plain_modulus() = 1 << 8;
+	parms.plain_modulus() = 1 << 4;
+	// cout << "PM = " << parms.plain_modulus().to_string() << endl;
+
 	parms.decomposition_bit_count() = 32;
 	parms.noise_standard_deviation() = ChooserEvaluator::default_noise_standard_deviation();
 	parms.noise_max_deviation() = ChooserEvaluator::default_noise_max_deviation();
@@ -455,6 +746,19 @@ void test_mult_time()
 	BalancedEncoder encoder(parms.plain_modulus());
 	Encryptor encryptor(parms, public_key);
 	Evaluator evaluator(parms, evaluation_keys);
+
+	BigPoly enc;
+
+	encoded = encoder.encode(8);
+	enc = encryptor.encrypt(encoded);
+	enc = evaluator.multiply(enc, enc);
+
+	Decryptor decryptor(parms, secret_key);
+	encoded = decryptor.decrypt(enc);
+
+	cout << " 0 == " << encoder.decode_int32(encoded) << endl << endl;
+
+	return;
 
 	srand(time(NULL));
 	for (int i = 0; i < 4096; i++)
@@ -489,7 +793,7 @@ void example_basics()
 	i.e. a polynomial of the form "1x^(power-of-2) + 1". We recommend using polynomials of
 	degree at least 1024.
 	*/
-	parms.poly_modulus() = "1x^1024 + 1";
+	parms.poly_modulus() = "1x^2048 + 1";
 
 	/*
 	Next choose the coefficient modulus. The values we recommend to be used are:
@@ -518,7 +822,7 @@ void example_basics()
 	| 1x^16384 + 1 | 768 bits            |
 	\------------------------------------/
 	*/
-	parms.coeff_modulus() = ChooserEvaluator::default_parameter_options().at(1024);
+	parms.coeff_modulus() = ChooserEvaluator::default_parameter_options().at(2048);
 
 	/*
 	Now we set the plaintext modulus. This can be any integer, even though here we take it to be a power of two.
@@ -527,7 +831,7 @@ void example_basics()
 	On the other hand, a larger plaintext modulus typically allows for better homomorphic integer arithmetic,
 	although this depends strongly on which encoder is used to encode integers into plaintext polynomials.
 	*/
-	parms.plain_modulus() = 1 << 8;
+	parms.plain_modulus() = 1 << 20;
 
 	/*
 	The decomposition bit count affects the behavior of the relinearization (key switch) operation,
@@ -554,8 +858,8 @@ void example_basics()
 		<< parms.coeff_modulus().significant_bit_count() << " bits per coefficient" << endl;
 
 	// Encode two integers as polynomials.
-	const int value1 = 127;
-	const int value2 = -127;
+	const int value1 = 255*255*8;
+	const int value2 = 1;
 	BalancedEncoder encoder(parms.plain_modulus());
 	BigPoly encoded1 = encoder.encode(value1);
 	BigPoly encoded2 = encoder.encode(value2);
@@ -579,9 +883,28 @@ void example_basics()
 	BigPoly encrypted1 = encryptor.encrypt(encoded1);
 	BigPoly encrypted2 = encryptor.encrypt(encoded2);
 
+
 	// Perform arithmetic on encrypted values.
 	cout << "Performing encrypted arithmetic..." << endl;
 	Evaluator evaluator(parms, evaluation_keys);
+	Decryptor decryptor1(parms, secret_key);
+
+	BigPoly encryptedproduct1 = evaluator.multiply(encrypted1, encrypted2);
+	for (int i = 0; i < 1024; i++)
+	{
+		BigPoly decryptedproduct = decryptor1.decrypt(encryptedproduct1);
+		int decodedproduct = encoder.decode_int32(decryptedproduct);
+
+		if (decodedproduct != 1)
+		{
+			cout << "Log_2 max depth = " << i << endl << endl;
+			return;
+		}
+		encryptedproduct1 = evaluator.multiply(encryptedproduct1, encryptedproduct1);
+
+		cout << i << endl;
+	}
+
 	cout << "... Performing negation..." << endl;
 	BigPoly encryptednegated1 = evaluator.negate(encrypted1);
 	cout << "... Performing addition..." << endl;
@@ -854,7 +1177,7 @@ void example_parameter_selection()
 	// How much noise did we end up with?
 	cout << "Noise in the result: " << inherent_noise(result, optimal_parms, secret_key).significant_bit_count()
 		<< "/" << inherent_noise_max(optimal_parms).significant_bit_count() << " bits" << endl;
-};
+}
 
 void example_batching()
 {
@@ -1055,10 +1378,6 @@ void example_batching()
 		cout << to_write;
 	}
 
-	
-
-	return;
-
 	// Now let's try to multiply the squares with the plaintext coefficients (3, 1, 4, 1, 5, 9, 0, 0, ..., 0).
 	// First create the coefficient vector
 	vector<BigUInt> plain_coeff_vector(slot_count, BigUInt(parms.plain_modulus().bit_count(), static_cast<uint64_t>(0)));
@@ -1120,3 +1439,554 @@ void print_example_banner(string title)
 			<< endl;
 	}
 }
+
+void conv_parameter_selection(EncryptionParameters &optimal_parms)
+{
+	print_example_banner("Convolution : Automatic Parameter Selection");
+
+	/*
+	Here we demonstrate the automatic parameter selection tool. Suppose we want to find parameters
+	that are optimized in a way that allows us to evaluate the polynomial 42x^3-27x+1. We need to know
+	the size of the input data, so let's assume that x is an integer with base-3 representation of length
+	at most 10.
+	*/
+	cout << "Finding optimized parameters for computing : " <<endl;
+	// cout << " x^10 + x^9 + x^8 + x^7 + x^6 + x^5 + x^4 + x^3" << endl;
+	cout << " Sigma(x^2*1*1*1*1*1*1*1)" << endl;
+
+	ChooserEncoder chooser_encoder;
+	ChooserEvaluator chooser_evaluator;
+
+	/*
+	First create a ChooserPoly representing the input data. You can think of this modeling a freshly
+	encrypted cipheretext of a plaintext polynomial with length at most 10 coefficients, where the
+	coefficients have absolute value at most 1.
+	*/	
+	ChooserPoly cinput(32, 1048575);
+	vector<ChooserPoly> terms(8);
+
+	// Compute the first term
+	for (int i = 0; i <8; i++)
+	{
+		ChooserPoly x_i = chooser_evaluator.exponentiate(cinput, 2);
+		// ChooserPoly cterm = chooser_evaluator.multiply_plain(x_i, chooser_encoder.encode(1));
+		/*for (int i = 0; i < 7; i++)
+		{
+			x_i = chooser_evaluator.multiply_plain(x_i, chooser_encoder.encode(1));
+		}*/
+		terms[i] = x_i;
+	}
+	
+	ChooserPoly equation = chooser_evaluator.add_many(terms);
+
+	// To find an optimized set of parameters, we use ChooserEvaluator::select_parameters(...).
+	// EncryptionParameters optimal_parms;
+	chooser_evaluator.select_parameters(equation, optimal_parms);
+
+	cout << "done." << endl;
+
+	// Let's print these to see what was recommended
+	cout << "Selected parameters:" << endl;
+	cout << "{ poly_modulus: " << optimal_parms.poly_modulus().to_string() << endl;
+	cout << "{ coeff_modulus: " << optimal_parms.coeff_modulus().to_string() << endl;
+	cout << "{ plain_modulus: " << optimal_parms.plain_modulus().to_dec_string() << endl;
+	cout << "{ decomposition_bit_count: " << optimal_parms.decomposition_bit_count() << endl;
+	cout << "{ noise_standard_deviation: " << optimal_parms.noise_standard_deviation() << endl;
+	cout << "{ noise_max_deviation: " << optimal_parms.noise_max_deviation() << endl;
+
+	// Let's try to actually perform the homomorphic computation using the recommended parameters.
+	// Generate keys.
+	//cout << "Generating keys..." << endl;
+	//KeyGenerator generator(optimal_parms);
+	//generator.generate();
+	//cout << "... key generation complete" << endl;
+	//BigPoly public_key = generator.public_key();
+	//BigPoly secret_key = generator.secret_key();
+	//EvaluationKeys evaluation_keys = generator.evaluation_keys();
+	//// Create the encoding/encryption tools
+	//BalancedEncoder encoder(optimal_parms.plain_modulus());
+	//Encryptor encryptor(optimal_parms, public_key);
+	//Evaluator evaluator(optimal_parms, evaluation_keys);
+	//Decryptor decryptor(optimal_parms, secret_key);
+	//// Now perform the computations on real encrypted data.
+	//int input_value = 12345;
+	//BigPoly plain_input = encoder.encode(input_value);
+	//cout << "Encoded " << input_value << " as polynomial " << plain_input.to_string() << endl;
+	//cout << "Encrypting ... ";
+	//BigPoly input = encryptor.encrypt(plain_input);
+	//cout << "done." << endl;
+	//// Compute the first term
+	//cout << "Computing first term ... ";
+	//BigPoly cubed_input = evaluator.exponentiate(input, 3);
+	//BigPoly term1 = evaluator.multiply_plain(cubed_input, encoder.encode(42));
+	//cout << "done." << endl;
+	//// Compute the second term
+	//cout << "Computing second term ... ";
+	//BigPoly term2 = evaluator.multiply_plain(input, encoder.encode(27));
+	//cout << "done." << endl;
+	//// Subtract the first two terms
+	//cout << "Subtracting first two terms ... ";
+	//BigPoly sum12 = evaluator.sub(term1, term2);
+	//cout << "done." << endl;
+	//// Add the constant term 1
+	//cout << "Adding one ... ";
+	//BigPoly result = evaluator.add_plain(sum12, encoder.encode(1));
+	//cout << "done." << endl;
+	//// Decrypt and decode
+	//cout << "Decrypting ... ";
+	//BigPoly plain_result = decryptor.decrypt(result);
+	//cout << "done." << endl;
+	//// Finally print the result
+	//cout << "Polynomial 42x^3-27x+1 evaluated at x=12345: " << encoder.decode_int64(plain_result) << endl;
+	//// How much noise did we end up with?
+	//cout << "Noise in the result: " << inherent_noise(result, optimal_parms, secret_key).significant_bit_count()
+	//	<< "/" << inherent_noise_max(optimal_parms).significant_bit_count() << " bits" << endl;
+
+};
+
+void SEAL_save_load(bool read_write, EncryptionParameters &parms, BigPoly &public_key, 
+	BigPoly &secret_key, EvaluationKeys &evaluation_keys)
+{
+	if (read_write == true)
+	{
+		/*parms.poly_modulus() = "1x^1024 + 1";
+		parms.coeff_modulus() = "3FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFD793F83";
+		parms.plain_modulus() = 1073153;
+		parms.decomposition_bit_count() = 32;
+		parms.noise_standard_deviation() = ChooserEvaluator::default_noise_standard_deviation();
+		parms.noise_max_deviation() = ChooserEvaluator::default_noise_max_deviation();*/
+		cout << "Generating keys..." << endl;
+		KeyGenerator generator(parms);
+		generator.generate();
+		cout << "... key generation complete" << endl;
+		public_key = generator.public_key();
+		secret_key = generator.secret_key();
+		evaluation_keys = generator.evaluation_keys();
+
+		ofstream out("HE_Context/parms.out", ios::out | ios::binary);
+		parms.save(out);
+		out.close();
+
+		out.open("HE_Context/pk.out", ios::out | ios::binary);
+		public_key.save(out);
+		out.close();
+
+		out.open("HE_Context/sk.out", ios::out | ios::binary);
+		secret_key.save(out);
+		out.close();
+
+		out.open("HE_Context/ek.out", ios::out | ios::binary);
+		evaluation_keys.save(out);
+		out.close();
+	}
+	else
+	{
+		ifstream in("HE_Context/parms.out", ios::in | ios::binary);
+		parms.load(in);
+		in.close();
+		in.open("HE_Context/pk.out", ios::in | ios::binary);
+		public_key.load(in);
+		in.close();
+		in.open("HE_Context/sk.out", ios::in | ios::binary);
+		secret_key.load(in);
+		in.close();
+		in.open("HE_Context/ek.out", ios::in | ios::binary);
+		evaluation_keys.load(in);
+		in.close();
+	}
+
+	BalancedEncoder encoder(parms.plain_modulus());
+	Encryptor encryptor(parms, public_key);
+	Evaluator evaluator(parms, evaluation_keys);
+
+	BigPoly encoded = encoder.encode(1);
+	BigPoly encrypted = encryptor.encrypt(encoded);
+	BigPoly product = evaluator.multiply(encrypted, encrypted);
+
+	Decryptor decryptor(parms, secret_key);
+	BigPoly decrypted = decryptor.decrypt(product);
+
+	if (encoder.decode_int32(decrypted) != 1)
+	{
+		cout << "Eroare la criptare/decriptare/codificare.\n";
+	}
+	else
+	{
+		cout << "SUCCES.\n";
+	}
+}
+
+void dummy_convolution(int *v1, int *v2, int l1, int l2, int *&res, int &l)
+{
+	cout << "FUNCTION NOT IMPLEMENTED" << endl;
+	int eroare = -1;
+	assert(eroare != -1);
+
+	/*assert(l1 != 0);
+	assert(l2 != 0);
+
+	MyTimer timer;
+
+	try
+	{
+		res = new int[l1 + l2];
+		l = l1 + l2;
+	}
+	catch (std::bad_alloc ba)
+	{
+		cout << ba.what() << endl;
+		res = nullptr;
+		l = -1;
+		return;
+	}
+
+	// vector in care se vor retine produsele intermediare 
+	// de forma a_i * b_i si apoi se vor suma
+	vector<int> coeff(l1 + l2, 0);
+
+	for (int i = 0; i < l; i++)
+	{
+
+	}*/
+
+	EncryptionParameters parms;
+	parms.poly_modulus() = "1x^1024 + 1";
+	parms.coeff_modulus() = "3FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFD793F83";
+	parms.plain_modulus() = 1073153;
+	// parms.plain_modulus() = 6507521;
+	parms.decomposition_bit_count() = 32;
+	parms.noise_standard_deviation() = ChooserEvaluator::default_noise_standard_deviation();
+	parms.noise_max_deviation() = ChooserEvaluator::default_noise_max_deviation();
+	cout << "Generating keys..." << endl;
+	KeyGenerator generator(parms);
+	generator.generate();
+	cout << "... key generation complete" << endl;
+	BigPoly public_key = generator.public_key();
+	BigPoly secret_key = generator.secret_key();
+	EvaluationKeys evaluation_keys = generator.evaluation_keys();
+
+	// Create the encryption tools
+	Encryptor encryptor(parms, public_key);
+	Evaluator evaluator(parms, evaluation_keys);
+	Decryptor decryptor(parms, secret_key);
+
+	cout << "CRT building ..." << endl;
+	PolyCRTBuilder crtbuilder(parms.plain_modulus(), parms.poly_modulus());
+	cout << "CRT finished." << endl;
+
+	size_t slot_count = crtbuilder.get_slot_count();
+	cout << "slot_count = " << slot_count << endl;
+
+	int esantion = 1;
+	vector<BigUInt> values(slot_count, BigUInt(parms.plain_modulus().bit_count(), static_cast<uint64_t>(esantion)));
+
+	BigPoly plain_composed_poly = crtbuilder.compose(values);
+
+}
+
+void hom_image_sharpening()
+{
+	// pixelii imaginii au valori intre [0, 255], sunt tonuri de gri
+	cout << "Test Homomorphic Image Sharpening " << endl;
+
+	MyTimer timer;
+	EncryptionParameters parms;
+	parms.poly_modulus() = "1x^4096 + 1";
+	parms.coeff_modulus() = "3FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFD793F83";
+	// parms.coeff_modulus() = ChooserEvaluator::default_parameter_options().at(1024);
+	parms.plain_modulus() = 1073153;
+	// parms.plain_modulus() = 6507521;
+	cout << "Schimpa decomposition bit count pentru a creste si mai mult viteza." << endl;
+	parms.decomposition_bit_count() = 128; // modifica pentru a creste viteza de prelucrare
+	parms.noise_standard_deviation() = ChooserEvaluator::default_noise_standard_deviation();
+	parms.noise_max_deviation() = ChooserEvaluator::default_noise_max_deviation();
+	cout << "Generating keys..." << endl;
+	KeyGenerator generator(parms);
+	generator.generate();
+	cout << "... key generation complete" << endl;
+	BigPoly public_key = generator.public_key();
+	BigPoly secret_key = generator.secret_key();
+	EvaluationKeys evaluation_keys = generator.evaluation_keys();
+
+	Encryptor encryptor(parms, public_key);
+	Evaluator evaluator(parms, evaluation_keys);
+
+	cout << "CRT building ..." << endl;
+	PolyCRTBuilder crtbuilder(parms.plain_modulus(), parms.poly_modulus());
+	cout << "CRT finished." << endl;
+
+	size_t slot_count = crtbuilder.get_slot_count();
+	cout << "slot_count = " << slot_count << endl;
+
+	vector<BigUInt> vecin_pixel_0(slot_count, BigUInt(parms.plain_modulus().bit_count(), static_cast<uint64_t>(255)));
+	cout << "crtbuilder.composing image ..." << endl;
+	BigPoly image_pixels_crt = crtbuilder.compose(vecin_pixel_0);
+	cout << "crt composing done." << endl;
+
+	// creste viteza de compunere cu thread-uri, omp folosind crtbuilder.set_slot
+
+	// pentru vecinii pixelului i 
+	// vector<BigUInt> vecin_pixel_0(slot_count, BigUInt(parms.plain_modulus().bit_count(), static_cast<uint64_t>(255)));
+	// BigPoly vecin_pixel_0_crt = crtbuilder.compose(vecin_pixel_0);
+
+	// vector<BigUInt> pixel(slot_count, BigUInt(parms.plain_modulus().bit_count(), static_cast<uint64_t>(pixel_val)));
+	// BigPoly image_pixels_crt = crtbuilder.compose(pixel);
+
+	// filtrarea propriu_zisa a imaginii
+	vector<BigPoly> encrypted_pixels(9);
+	for (int i = 0; i < 9; i++)
+	{
+		encrypted_pixels[i] = encryptor.encrypt(image_pixels_crt); //image_pixels_crt[ i ]
+	}
+
+	int kernel[] = { 0,-1,0,-1,5,-1,0,-1,0 };
+	vector<BigPoly> kernel_coeffs(9);
+	for (int i = 0; i < 9; i++)
+	{
+		vector<BigUInt> crt_kernel(slot_count, BigUInt(parms.plain_modulus().bit_count(), static_cast<uint64_t>(abs(kernel[i]))));
+		kernel_coeffs[i] = crtbuilder.compose(crt_kernel);
+	}
+
+	
+
+	timer.start_timer();
+	// vector<BigPoly> produse_intermediare(9);
+
+	BigPoly image;
+
+#pragma omp parallel shared(image, kernel, encrypted_pixels, kernel_coeffs) \
+		private(round, i, sum, index_sum, sub, index_sub)
+	{vector<BigPoly> sum; int index_sum = 0;
+			vector<BigPoly> sub; int index_sub = 0;
+
+// #pragma omp for \
+		shared(image, kernel, encrypted_pixels, kernel_coeffs, sum, index_sum, sub, index_sub) \
+		private(i)
+			for (int i = 0; i < 9; i++)
+			{
+				// produse_intermediare[i] = evaluator.multiply_plain(encrypted_pixels[i], kernel_coeffs[i]);
+
+				if (kernel[i] < 0)
+				{
+					sub.push_back(evaluator.multiply_plain(encrypted_pixels[i], kernel_coeffs[i]));
+					index_sum++;
+				}
+				else
+				{
+					sum.push_back(evaluator.multiply_plain(encrypted_pixels[i], kernel_coeffs[i]));
+					index_sub++;
+				}
+			}
+
+			BigPoly sumas = evaluator.add_many(sum);
+			BigPoly subas = evaluator.add_many(sub);
+			image = evaluator.sub(sumas, subas);
+#pragma omp for
+		for (int round = 0; round < 8; round++)
+		{
+			
+		}
+	}
+
+	// BigPoly sharpened_image = evaluator.add_many(produse_intermediare);
+	cout << "Timpul prelucrarii : " << timer.stop_timer() << endl;
+
+	Decryptor decryptor(parms, secret_key);
+
+	image = decryptor.decrypt(image);
+	cout << "slot = " << crtbuilder.get_slot(image, rand()%1024).to_double() << " ";
+	/*for (int i = 0; i < slot_count; i++)
+	{
+		// BigPoly p = crtbuilder.get_slot(image, i);
+		cout << "slot = " << crtbuilder.get_slot(image, i).to_double()<<" ";
+	}*/
+
+
+	/*ofstream out("HE_Context/parms4096_batch.out", ios::out | ios::binary);
+	parms.save(out);
+	out.close();
+
+	out.open("HE_Context/pk4096_batch.out", ios::out | ios::binary);
+	public_key.save(out);
+	out.close();
+
+	out.open("HE_Context/sk4096_batch.out", ios::out | ios::binary);
+	secret_key.save(out);
+	out.close();
+
+	out.open("HE_Context/ek4096_batch.out", ios::out | ios::binary);
+	evaluation_keys.save(out);
+	out.close();*/
+}
+
+void test_op(bool load)
+{
+	cout << "Test Substraction " << endl;
+
+	/*EncryptionParameters parms;
+	parms.poly_modulus() = "1x^2048 + 1";
+	parms.coeff_modulus() = ChooserEvaluator::default_parameter_options().at(2048);
+	parms.plain_modulus() = 1 << 8;
+	parms.decomposition_bit_count() = 32; 
+	parms.noise_standard_deviation() = ChooserEvaluator::default_noise_standard_deviation();
+	parms.noise_max_deviation() = ChooserEvaluator::default_noise_max_deviation();
+
+	cout << "Generating keys..." << endl;
+	KeyGenerator generator(parms);
+	generator.generate();
+	cout << "... key generation complete" << endl;
+
+	BigPoly public_key = generator.public_key();
+	BigPoly secret_key = generator.secret_key();
+	EvaluationKeys evaluation_keys = generator.evaluation_keys();
+
+	Encryptor encryptor(parms, public_key);
+	Evaluator evaluator(parms, evaluation_keys);
+
+	BalancedEncoder encoder(parms.plain_modulus());
+	BigPoly val1 = encoder.encode(10);
+	BigPoly val2 = encoder.encode(3);
+
+	BigPoly x = encryptor.encrypt(val1);
+	BigPoly y = encryptor.encrypt(val2);;
+
+	try
+	{
+		BigPoly res = evaluator.multiply(x, y);
+		Decryptor decryptor(parms, secret_key);
+		BigPoly decrypted = decryptor.decrypt(res);
+
+		cout << "res = " << encoder.decode_int32(res) << endl << endl;
+	}
+	catch (...)
+	{
+		cout << "This is PROGRAMMING." << endl;
+	}*/
+	
+
+	EncryptionParameters parms;
+	BigPoly public_key;
+	BigPoly secret_key;
+	EvaluationKeys evaluation_keys;
+
+	if (load == true)
+	{
+
+		ifstream in("HE_Context/parms.out", ios::in | ios::binary);
+		parms.load(in);
+		in.close();
+		in.open("HE_Context/pk.out", ios::in | ios::binary);
+		public_key.load(in);
+		in.close();
+		in.open("HE_Context/sk.out", ios::in | ios::binary);
+		secret_key.load(in);
+		in.close();
+		in.open("HE_Context/ek.out", ios::in | ios::binary);
+		evaluation_keys.load(in);
+		in.close();
+	}
+	else
+	{
+
+		parms.poly_modulus() = "1x^2048 + 1";
+		parms.coeff_modulus() = ChooserEvaluator::default_parameter_options().at(2048);
+		parms.plain_modulus() = 1 << 8;
+		parms.decomposition_bit_count() = 32;
+		parms.noise_standard_deviation() = ChooserEvaluator::default_noise_standard_deviation();
+		parms.noise_max_deviation() = ChooserEvaluator::default_noise_max_deviation();
+
+		cout << "Generating keys..." << endl;
+		KeyGenerator generator(parms);
+		generator.generate();
+		cout << "... key generation complete" << endl;
+		public_key = generator.public_key();
+		secret_key = generator.secret_key();
+		evaluation_keys = generator.evaluation_keys();
+
+		ofstream out("HE_Context/parms2048.out", ios::out | ios::binary);
+		parms.save(out);
+		out.close();
+		out.open("HE_Context/pk2048.out", ios::out | ios::binary);
+		public_key.save(out);
+		out.close();
+		out.open("HE_Context/sk2048.out", ios::out | ios::binary);
+		secret_key.save(out);
+		out.close();
+		out.open("HE_Context/ek2048.out", ios::out | ios::binary);
+		evaluation_keys.save(out);
+		out.close();
+	}
+
+	const int value1 = 7;
+	const int value2 = 7;
+	BalancedEncoder encoder(parms.plain_modulus());
+	BigPoly encoded1 = encoder.encode(value1);
+	BigPoly encoded2 = encoder.encode(value2);
+
+	Encryptor encryptor(parms, public_key);
+	BigPoly encrypted1 = encryptor.encrypt(encoded1);
+	BigPoly encrypted2 = encryptor.encrypt(encoded2);
+
+	// Perform arithmetic on encrypted values.
+	cout << "Performing encrypted arithmetic..." << endl;
+	Evaluator evaluator(parms, evaluation_keys);
+
+	MyTimer timer;
+	timer.start_timer();
+	BigPoly result = evaluator.multiply_plain(encrypted1, encoded2);
+	double time = timer.stop_timer();
+	cout << "Timp = " << time << endl;
+
+	Decryptor decryptor(parms, secret_key);
+	BigPoly decrypted = decryptor.decrypt(result);
+	cout << "Result = " << encoder.decode_int32(decrypted) << endl;
+
+	/*cout << "... Performing negation..." << endl;
+	BigPoly encryptednegated1 = evaluator.negate(encrypted1);
+	cout << "... Performing addition..." << endl;
+	BigPoly encryptedsum = evaluator.add(encrypted1, encrypted2);
+	cout << "... Performing subtraction..." << endl;
+	BigPoly encrypteddiff = evaluator.sub(encrypted1, encrypted1);
+	cout << "... Performing multiplication..." << endl;
+	BigPoly encryptedproduct = evaluator.multiply(encrypted1, encrypted2);*/
+
+	/*BigPoly zero = encoder.encode(0);
+	cout << "Encoded zero = " << zero.to_string() << endl;
+	BigPoly encrypted_zero = encryptor.encrypt(zero);
+	BigPoly encrypteddiff = evaluator.sub(encrypted1, encrypted2);
+	Decryptor decryptor(parms, secret_key);
+	BigPoly decrypted_zero = decryptor.decrypt(encrypted_zero);
+	cout << "Zero = " << decrypted_zero.to_string() << endl;*/
+
+
+	/*BigPoly decrypted1 = decryptor.decrypt(encrypted1);
+	BigPoly decrypted2 = decryptor.decrypt(encrypted2);
+	BigPoly decryptednegated1 = decryptor.decrypt(encryptednegated1);
+	BigPoly decryptedsum = decryptor.decrypt(encryptedsum);
+	BigPoly decrypteddiff = decryptor.decrypt(encrypteddiff);
+	BigPoly decryptedproduct = decryptor.decrypt(encryptedproduct);
+
+	// Decode results.
+	int decoded1 = encoder.decode_int32(decrypted1);
+	int decoded2 = encoder.decode_int32(decrypted2);
+	int decodednegated1 = encoder.decode_int32(decryptednegated1);
+	int decodedsum = encoder.decode_int32(decryptedsum);
+	int decodeddiff = encoder.decode_int32(decrypteddiff);
+	int decodedproduct = encoder.decode_int32(decryptedproduct);
+
+	// Display results.
+	cout << value1 << " after encryption/decryption = " << decoded1 << endl;
+	cout << value2 << " after encryption/decryption = " << decoded2 << endl;
+	cout << "encrypted negate of " << value1 << " = " << decodednegated1 << endl;
+	cout << "encrypted addition of " << value1 << " and " << value2 << " = " << decodedsum << endl;
+	cout << "encrypted subtraction of " << value1 << " and " << value2 << " = " << decodeddiff << endl;
+	cout << "encrypted multiplication of " << value1 << " and " << value2 << " = " << decodedproduct << endl;*/
+
+}
+
+void hom_k_means()
+{
+
+
+}
+
