@@ -74,7 +74,7 @@ void batch_low_param()
 
 void test_homomorphic_conv()
 {
-	HE_Batch_Signal he_signal("1x^4096 + 1");
+	HE_Batch_Signal he_signal("1x^1024 + 1");
 
 	vector<int> filtru(4, 1);
 	vector<int> semnal(4, 2);

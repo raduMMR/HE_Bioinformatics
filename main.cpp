@@ -3,11 +3,7 @@
 #include <fstream>
 #include "HE_Signal.h"
 #include <assert.h>
-#include "../HE_Utils.h"
-#include "../HE_Integer.h"
-#include "../FFT.h"
 #include "MyTimer.h"
-#include "../polinoame.h"
 #include "basic_examples.h"
 
 Evaluator* eval;
@@ -115,9 +111,9 @@ void codificare_semnal_ca_polinom();
 
 int main()
 {
-	batch_low_param();
+	// batch_low_param();
 
-	// test_homomorphic_conv();
+	test_homomorphic_conv();
 
 	// test_reliniarize_after_many_mults();
 
