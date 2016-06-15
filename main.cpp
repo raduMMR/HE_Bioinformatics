@@ -13,7 +13,6 @@ BigPoly* secret_key;
 BigPoly* ctxt_of_1;                  // encryption of 1 (constant)
 int		t_bits;
 
-
 void example_signal_processing()
 {
 	HE_Signal signal2;
@@ -111,7 +110,55 @@ void codificare_semnal_ca_polinom();
 
 int main()
 {
+<<<<<<< HEAD
 	// batch_low_param();
+=======
+	test_op(true);
+	return 0;
+
+/************************************************************************************/
+	
+	EncryptionParameters parms;
+	BigPoly public_key;
+	BigPoly secret_key;
+	EvaluationKeys evaluation_keys;
+
+	conv_parameter_selection(parms);
+
+	cout << "Encryption parameters specify " << parms.poly_modulus().significant_coeff_count() << " coefficients with "
+		<< parms.coeff_modulus().significant_bit_count() << " bits per coefficient" << endl;
+
+	string coeff = parms.coeff_modulus().to_string();
+	int count = 0;
+
+	for (int i = 0; i < coeff.size(); i++)
+	{
+		if (coeff[i] == 'F')
+		{
+			count++;
+		}
+	}
+
+	cout << endl << "cout_F = " << count << endl << endl;
+
+
+	// SEAL_save_load(true, parms, public_key, secret_key, evaluation_keys);
+
+
+	// seteaza parametrii a.i. BATCHING-UL SA FIE POSIBIL
+	// test_real_conv(parms, public_key, secret_key, evaluation_keys);
+
+	//cout << "Encryption parameters specify " << parms.poly_modulus().significant_coeff_count() << " coefficients with "
+		//<< parms.coeff_modulus().significant_bit_count() << " bits per coefficient" << endl;
+
+	// example_parameter_selection();
+
+	// example_basics();
+
+	// SEAL_eval_max_depth(parms, public_key, secret_key, evaluation_keys);
+
+	// batch_low_param(parms, public_key, secret_key, evaluation_keys);
+>>>>>>> 0a2f1d409b5d0d7e7c01a5a677f8d205d496f31b
 
 	test_homomorphic_conv();
 

@@ -32,6 +32,19 @@ HE_Signal::HE_Signal(const char* poly_modulus, int plain_modulus,
 	secret_key = new BigPoly(generator.secret_key());
 	evaluation_keys = new EvaluationKeys(generator.evaluation_keys());
 
+	/*ifstream in("HE_Context/parms.out", ios::in | ios::binary);
+	parms.load(in);
+	in.close();
+	in.open("HE_Context/pk.out", ios::in | ios::binary);
+	public_key->load(in);
+	in.close();
+	in.open("HE_Context/sk.out", ios::in | ios::binary);
+	secret_key->load(in);
+	in.close();
+	in.open("HE_Context/ek.out", ios::in | ios::binary);
+	evaluation_keys->load(in);
+	in.close();*/
+
 	/*BalancedEncoder encoder(parms.plain_modulus());
 	Encryptor encryptor(parms, *public_key);
 	Decryptor decryptor(parms, *secret_key);
@@ -46,21 +59,21 @@ HE_Signal::HE_Signal(const char* poly_modulus, int plain_modulus,
 	BigPoly decrypted1 = decryptor.decrypt(encrypted1);
 	cout << encoder.decode_int32(decrypted1);*/
 
-	/*ofstream par_file("par.out");
+	/*ofstream par_file("HE_Context/parms.out", ios::out | ios::binary);
 	parms.save(par_file);
 	par_file.flush();
 	// cout << parms.coeff_modulus().significant_bit_count() << " bits per coefficient" << endl;
 
-	ofstream pk_file("pk.out");
+	ofstream pk_file("HE_Context/pk.out", ios::out | ios::binary);
 	public_key->save(pk_file);
 	pk_file.flush();
 	// cout << public_key.coeff_uint64_count() << endl;
 
-	ofstream sk_file("sk.out");
+	ofstream sk_file("HE_Context/sk.out", ios::out | ios::binary);
 	secret_key->save(sk_file);
 	sk_file.flush();
 
-	ofstream ek_file("ek.out");
+	ofstream ek_file("HE_Context/ek.out", ios::out | ios::binary);
 	evaluation_keys->save(ek_file);
 	ek_file.flush();*/
 	// cout << "eval.count = " << evaluation_keys.count() << endl;
@@ -70,6 +83,7 @@ HE_Signal::HE_Signal(const char* poly_modulus, int plain_modulus,
 
 /*HE_Signal::HE_Signal()
 {
+!!!!!!!!!! ios::binary FARA SETAREA FLAG-ULUI APARE O EROARE LA INCARCAREA CHEILOR DE EVALLUARE
 	ifstream in;
 	in.open("par.out");
 	parms.load(in);

@@ -21,9 +21,9 @@ public:
 
 	virtual ~HE_Signal();
 
-	void encrypt_signal(vector<int> &plain_samples, vector<BigPoly> &encrypted_samples)const;
+	virtual void encrypt_signal(vector<int> &plain_samples, vector<BigPoly> &encrypted_samples)const;
 
-	void decrypt_signal(vector<int> &plain_samples, vector<BigPoly> &encrypted_samples)const;
+	virtual void decrypt_signal(vector<int> &plain_samples, vector<BigPoly> &encrypted_samples)const;
 
 	void decrypt_no_relin(vector<int> &plain_samples, vector<BigPoly> &encrypted_samples)const;
 
