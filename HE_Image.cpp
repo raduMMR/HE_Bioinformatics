@@ -8,6 +8,7 @@ HE_Image::HE_Image(EncryptionParameters &parameters, int ks) :
 	crtbuilder(parameters.plain_modulus(), parameters.poly_modulus()),
 	kernel_size(ks)
 {
+	cout << "FUNCTIONEAZA DOAR PENTRU FILTRE DE DETECTIE A CONTURURILOR." << endl;
 }
 
 HE_Image::~HE_Image() {}
@@ -180,6 +181,12 @@ void HE_Image::hom_filtering(vector<vector<BigPoly> > &encrypted_kernels, vector
 	}
 }
 
+
+
+
+
+
+/*******************************                 omp routines                   ********************************************/
 void HE_Image::omp_hom_filtering(vector<vector<BigPoly> > &encrypted_kernels, vector<BigPoly> &filter, int original_kernel[],
 	vector<BigPoly> &enc_image, EvaluationKeys& evaluation_keys, BigPoly &secret_key)const
 {
@@ -188,24 +195,27 @@ void HE_Image::omp_hom_filtering(vector<vector<BigPoly> > &encrypted_kernels, ve
 
 #pragma omp parallel
 	{
-#pragma omp for shared(encrypted_kernels, filter, original_kernel, enc_image, evaluator, kernel_size) \
-		private(i,j, sum, index_sum, sub, index_sub)
+// #pragma omp for shared(encrypted_kernels, filter, original_kernel, enc_image, evaluator, kernel_size) \
+		private(i,j, sum, index_sum, sub, index_sub, sumas, subas)
 
 		for (int i = 0; i < encrypted_kernels.size(); i++)
 		{
 			vector<BigPoly> sum; int index_sum = 0;
 			vector<BigPoly> sub; int index_sub = 0;
 
-			for (int j = 0; j < kernel_size; j++)
+#pragma omp for shared(encrypted_kernels, filter, original_kernel, enc_image, sumas, subas,  \
+		evaluator, kernel_size, sum, index_sum, sub, index_sub, ) \
+		private(j)
+			for (int j = 0; j < kernel_size*kernel_size; j++)
 			{
-				if (original_kernel[i] < 0)
+				if (original_kernel[j] < 0)
 				{
-					sub.push_back(evaluator.multiply_plain(encrypted_kernels[i][j], filter[i]));
+					sub.push_back(evaluator.multiply_plain(encrypted_kernels[i][j], filter[j]));
 					index_sum++;
 				}
 				else
 				{
-					sum.push_back(evaluator.multiply_plain(encrypted_kernels[i][j], filter[i]));
+					sum.push_back(evaluator.multiply_plain(encrypted_kernels[i][j], filter[j]));
 					index_sub++;
 				}
 			}

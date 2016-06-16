@@ -6,15 +6,6 @@
 using namespace std;
 using namespace seal;
 
-// typedef vector<BigPoly> Encrypted_Kernel;
-// Encrypted_Kernel
-/*						Exemplu
-vecin_criptat_0_0 vecin_criptat_0_1 vecin_criptat_0_2
-vecin_criptat_1_0       pixel       vecin_criptat_1_2
-vecin_criptat_2_0 vecin_criptat_2_1 vecin_criptat_2_2
-
-*/
-
 class HE_Image
 {
 	EncryptionParameters parms;
