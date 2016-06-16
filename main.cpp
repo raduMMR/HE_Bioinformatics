@@ -108,20 +108,44 @@ void example();
 void codificare_semnal_ca_polinom();
 
 
+/*
+19701002217493787572 859 706 405 990 105 231 706 515 944 406 718 582 863 
+759 472 395 429 055 407 119 738 991 784 478 887 845 639 079 714 418 065 409
+*/
+
 int main()
 {
-<<<<<<< HEAD
-	// batch_low_param();
-=======
-	test_op(true);
-	return 0;
-
-/************************************************************************************/
-	
 	EncryptionParameters parms;
 	BigPoly public_key;
 	BigPoly secret_key;
 	EvaluationKeys evaluation_keys;
+
+	parms.poly_modulus() = "1x^8192 + 1";
+	BigUInt two_sixty("FFFFFFE00000001"); // 2 ^ 60
+	BigUInt res = two_sixty * two_sixty * two_sixty * two_sixty * two_sixty * two_sixty;
+	res = res * BigUInt("800000") - BigUInt("200000000") + BigUInt("1");
+	parms.coeff_modulus() = "7FFFFFA000001E2FFFFAE200007F877FF90C40002FB49FFF90C400007F877FFFAE2000001E2FFFFFF9FFFFFE00800001";
+	parms.plain_modulus() = 1099512004609;
+	parms.decomposition_bit_count() = 512;
+
+	parms.noise_standard_deviation() = ChooserEvaluator::default_noise_standard_deviation();
+	parms.noise_max_deviation() = ChooserEvaluator::default_noise_max_deviation();
+
+	generate_parameters(parms, public_key, secret_key, evaluation_keys);
+
+	vector<string> files(4);
+	files[0] = "RES\parms8192.out";
+	files[1] = "RES\pk8192.out";
+	files[2] = "RES\sk8192.out";
+	files[3] = "RES\ek8192.out";
+	save_parameters(files, parms, public_key, secret_key, evaluation_keys);
+
+	cout << "Program incheiat cu SUCCES." << endl;
+	return 0;
+
+/************************************************************************************/
+	
+	
 
 	conv_parameter_selection(parms);
 
@@ -158,7 +182,6 @@ int main()
 	// SEAL_eval_max_depth(parms, public_key, secret_key, evaluation_keys);
 
 	// batch_low_param(parms, public_key, secret_key, evaluation_keys);
->>>>>>> 0a2f1d409b5d0d7e7c01a5a677f8d205d496f31b
 
 	test_homomorphic_conv();
 
