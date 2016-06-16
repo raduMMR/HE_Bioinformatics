@@ -7,10 +7,10 @@
 #include <fstream>
 #include <assert.h>
 #include <string>
+#include "HE_Image.h"
 
 using namespace std;
 using namespace seal;
-
 
 /* MMR's helper functions*/
 void generate_parameters(EncryptionParameters &parms, BigPoly &public_key,
@@ -1988,5 +1988,227 @@ void hom_k_means()
 {
 
 
+}
+
+void test_HE_image()
+{
+	MyTimer timer;
+	double elapsed_time = 0.0;
+
+	EncryptionParameters parms;
+	parms.poly_modulus() = "1x^1024 + 1";-
+	parms.coeff_modulus() = "3FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFD793F83";
+	parms.plain_modulus() = 1073153;
+	cout << "Schimba decomposition bit count pentru a creste si mai mult viteza." << endl;
+	parms.decomposition_bit_count() = 128; 
+	parms.noise_standard_deviation() = ChooserEvaluator::default_noise_standard_deviation();
+	parms.noise_max_deviation() = ChooserEvaluator::default_noise_max_deviation();
+
+	BigPoly public_key;
+	BigPoly secret_key;
+	EvaluationKeys evaluation_keys;
+
+	generate_parameters(parms, public_key, secret_key, evaluation_keys);
+
+	cout << "Generare Parametrii cu succes" << endl;
+	int N = 3;
+	cout << "Se creeaza obiectul he_image ..." << endl;
+	HE_Image he_image(parms, N);
+	cout << "S-a creat obiectul he_image." << endl;
+
+	// test_crt_builder(he_image.get_enc_params(), he_image.get_crt_builder());
+
+	int **result = nullptr;
+	int **mat_pixels = nullptr;
+	mat_pixels = new int*[512];
+	result = new int*[512];
+	for (int i = 0; i < 512; i++)
+	{
+		mat_pixels[i] = new int[512];
+		for (int j = 0; j < 512; j++)
+		{
+			mat_pixels[i][j] = 255;
+		}
+
+		result[i] = new int[512];
+		memset(result[i], 0, sizeof(int) * 512);
+	}
+
+	vector<vector<BigPoly> > enc_kernels;
+	int slot_count = 0;
+	cout << "Se cripteaza imaginea ..." << endl;
+	he_image.encrypt_for_filtering(mat_pixels, 512, enc_kernels, slot_count, public_key);
+	cout << "Imagine criptata cu SUCCES." << endl;
+
+	int *kernel = new int[9];
+	kernel[0] = kernel[2] = kernel[6] = kernel[8] = 0;
+	kernel[1] = kernel[3] = kernel[5] = kernel[7] = -1;
+	kernel[4] = 5;
+
+	vector<BigPoly> encoded_filter;
+	cout << "Se codifica filtrul ..." << endl;
+	he_image.encode_filter(kernel, N, encoded_filter, slot_count);
+	cout << "Filtrul codificat cu SUCCES." << endl;
+
+	vector<BigPoly> filtered_image;
+	cout << "Se filtreaza homomorfic imaginea ..." << endl;
+
+	// assert(enc_kernels.size() != 0);
+	// assert(encoded_filter.size() != 0);
+
+	timer.start_timer();
+	he_image.omp_hom_filtering(enc_kernels, encoded_filter, kernel, filtered_image, evaluation_keys, secret_key);
+	elapsed_time = timer.stop_timer();
+	cout << "S-a terminat de filtrat homomorfic imaginea." << endl;
+	cout << "Timp filtrare homomorfica paralelizata = " << elapsed_time << endl;
+
+	assert(filtered_image.size() == enc_kernels.size());
+
+	cout << "Se decripteaza imaginea dupa filtrare." << endl;
+	int *dec_image = nullptr;
+	
+	timer.start_timer();
+	// he_image.decrypt_after_filtering(dec_image, filtered_image, slot_count, secret_key);
+	he_image.omp_decrypt_after_filtering(dec_image, filtered_image, slot_count, secret_key);
+	elapsed_time = timer.stop_timer();
+	cout << "S-a decriptat imaginea." << endl << endl;
+
+	cout << "Timp decriptare = " << elapsed_time << endl << endl;
+
+	bool ok = true;
+	for (int i = 0; i < 512; i++)
+	{
+		for (int j = 0; j < 512; j++)
+		{
+			if (mat_pixels[i][j] != dec_image[i*512+j] )
+			{
+				cout << " i = " << i << ", j = " << j << endl;
+				cout << "Valori incorecte.\n";
+				ok = false;
+				i = 512;
+				break;
+			}
+		}
+	}
+
+	if (ok == true)
+	{
+		cout << "BIG SUCCES hE_IMAGE MERGE !!!" << endl;
+	}
+	else
+	{
+		cout << "ESEC : erori la filtrare." << endl;
+	}
+
+
+	vector<string> files(5);
+	files[0] = "HE_Context/parms1024.out";
+	files[1] = "HE_Context/pk1024.out";
+	files[2] = "HE_Context/sk1024.out";
+	files[3] = "HE_Context/ek1024.out";
+
+	save_parameters(files, parms, public_key, secret_key, evaluation_keys);
+
+	// cleanup
+	for (int i = 0; i < 512; i++)
+	{
+		delete[] mat_pixels[i];
+		delete[] result[i];
+	}
+	delete[] mat_pixels;
+	delete[] result;
+
+	if (dec_image != nullptr)
+	{
+		delete[] dec_image;
+	}
+
+	delete[] kernel;
+}
+
+void test_crt_builder(const EncryptionParameters parms, PolyCRTBuilder &crtbuilder)
+{
+	// pixelii imaginii au valori intre [0, 255], sunt tonuri de gri
+	cout << "Test Homomorphic Image Sharpening " << endl;
+
+	MyTimer timer;
+	cout << "Generating keys..." << endl;
+	KeyGenerator generator(parms);
+	generator.generate();
+	cout << "... key generation complete" << endl;
+	BigPoly public_key = generator.public_key();
+	BigPoly secret_key = generator.secret_key();
+	EvaluationKeys evaluation_keys = generator.evaluation_keys();
+
+	Encryptor encryptor(parms, public_key);
+	Evaluator evaluator(parms, evaluation_keys);
+
+	size_t slot_count = crtbuilder.get_slot_count();
+	cout << "slot_count = " << slot_count << endl;
+
+	vector<BigUInt> vecin_pixel_0(slot_count, BigUInt(parms.plain_modulus().bit_count(), static_cast<uint64_t>(255)));
+	cout << "crtbuilder.composing image ..." << endl;
+	BigPoly image_pixels_crt = crtbuilder.compose(vecin_pixel_0);
+	cout << "crt composing done." << endl;
+
+	vector<BigPoly> encrypted_pixels(9);
+	for (int i = 0; i < 9; i++)
+	{
+		encrypted_pixels[i] = encryptor.encrypt(image_pixels_crt); //image_pixels_crt[ i ]
+	}
+
+	int kernel[] = { 0,-1,0,-1,5,-1,0,-1,0 };
+	vector<BigPoly> kernel_coeffs(9);
+	for (int i = 0; i < 9; i++)
+	{
+		vector<BigUInt> crt_kernel(slot_count, BigUInt(parms.plain_modulus().bit_count(), static_cast<uint64_t>(abs(kernel[i]))));
+		kernel_coeffs[i] = crtbuilder.compose(crt_kernel);
+	}
+
+	timer.start_timer();
+
+	BigPoly image;
+
+#pragma omp parallel shared(image, kernel, encrypted_pixels, kernel_coeffs) \
+		private(round, i, sum, index_sum, sub, index_sub)
+	{
+		vector<BigPoly> sum; int index_sum = 0;
+		vector<BigPoly> sub; int index_sub = 0;
+
+		// #pragma omp for \
+				shared(image, kernel, encrypted_pixels, kernel_coeffs, sum, index_sum, sub, index_sub) \
+		private(i)
+		for (int i = 0; i < 9; i++)
+		{
+			// produse_intermediare[i] = evaluator.multiply_plain(encrypted_pixels[i], kernel_coeffs[i]);
+
+			if (kernel[i] < 0)
+			{
+				sub.push_back(evaluator.multiply_plain(encrypted_pixels[i], kernel_coeffs[i]));
+				index_sum++;
+			}
+			else
+			{
+				sum.push_back(evaluator.multiply_plain(encrypted_pixels[i], kernel_coeffs[i]));
+				index_sub++;
+			}
+		}
+
+		BigPoly sumas = evaluator.add_many(sum);
+		BigPoly subas = evaluator.add_many(sub);
+		image = evaluator.sub(sumas, subas);
+#pragma omp for
+		for (int round = 0; round < 8; round++)
+		{
+
+		}
+	}
+
+	cout << "Timpul prelucrarii : " << timer.stop_timer() << endl;
+
+	Decryptor decryptor(parms, secret_key);
+
+	image = decryptor.decrypt(image);
+	cout << "slot = " << crtbuilder.get_slot(image, rand() % 1024).to_double() << " ";
 }
 
