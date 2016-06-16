@@ -115,11 +115,35 @@ void codificare_semnal_ca_polinom();
 
 int main()
 {
+<<<<<<< HEAD
+=======
+	test_field();
+
+	// test_HE_image();
+
+	// return 0;
+
+>>>>>>> 7c570c69db37f1316133fa76890ee49d07951436
 	EncryptionParameters parms;
+
+	/*parms.poly_modulus() = "1x^1024 + 1";
+	parms.coeff_modulus() = "3FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFD793F83";
+	parms.plain_modulus() = 1073153;
+	cout << "Schimpa decomposition bit count pentru a creste si mai mult viteza." << endl;
+	parms.decomposition_bit_count() = 32; // modifica pentru a creste viteza de prelucrare
+	parms.noise_standard_deviation() = ChooserEvaluator::default_noise_standard_deviation();
+	parms.noise_max_deviation() = ChooserEvaluator::default_noise_max_deviation();
 	BigPoly public_key;
 	BigPoly secret_key;
 	EvaluationKeys evaluation_keys;
+	generate_parameters(parms, public_key, secret_key, evaluation_keys);
+	vector<string> files(5);
+	files[0] = "HE_Context/parms1024.out";
+	files[1] = "HE_Context/parms1024.out";
+	files[2] = "HE_Context/parms1024.out";
+	files[3] = "HE_Context/parms1024.out";*/
 
+<<<<<<< HEAD
 	parms.poly_modulus() = "1x^8192 + 1";
 	BigUInt two_sixty("FFFFFFE00000001"); // 2 ^ 60
 	BigUInt res = two_sixty * two_sixty * two_sixty * two_sixty * two_sixty * two_sixty;
@@ -147,6 +171,9 @@ int main()
 	
 	
 
+=======
+	
+>>>>>>> 7c570c69db37f1316133fa76890ee49d07951436
 	conv_parameter_selection(parms);
 
 	cout << "Encryption parameters specify " << parms.poly_modulus().significant_coeff_count() << " coefficients with "
@@ -165,6 +192,10 @@ int main()
 
 	cout << endl << "cout_F = " << count << endl << endl;
 
+	ofstream out("gen_param.txt");
+	out << "Encryption parameters specify " << parms.poly_modulus().significant_coeff_count() << " coefficients with "
+		<< parms.coeff_modulus().significant_bit_count() << " bits per coefficient" << endl;
+	out.close();
 
 	// SEAL_save_load(true, parms, public_key, secret_key, evaluation_keys);
 

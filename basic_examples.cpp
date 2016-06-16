@@ -7,9 +7,11 @@
 #include <fstream>
 #include <assert.h>
 #include <string>
+#include "HE_Image.h"
 
 using namespace std;
 using namespace seal;
+
 
 
 /* MMR's helper functions*/
@@ -1781,11 +1783,6 @@ void hom_image_sharpening()
 			BigPoly sumas = evaluator.add_many(sum);
 			BigPoly subas = evaluator.add_many(sub);
 			image = evaluator.sub(sumas, subas);
-#pragma omp for
-		for (int round = 0; round < 8; round++)
-		{
-			
-		}
 	}
 
 	// BigPoly sharpened_image = evaluator.add_many(produse_intermediare);
@@ -1987,6 +1984,397 @@ void test_op(bool load)
 void hom_k_means()
 {
 
+
+}
+
+void test_HE_image()
+{
+	MyTimer timer;
+	double elapsed_time = 0.0;
+
+	EncryptionParameters parms;
+	parms.poly_modulus() = "1x^4096 + 1";
+	parms.coeff_modulus() = "3FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFD793F83";
+	parms.plain_modulus() = 1073153;
+	cout << "Schimpa decomposition bit count pentru a creste si mai mult viteza." << endl;
+	parms.decomposition_bit_count() = 128; 
+	parms.noise_standard_deviation() = ChooserEvaluator::default_noise_standard_deviation();
+	parms.noise_max_deviation() = ChooserEvaluator::default_noise_max_deviation();
+
+	BigPoly public_key;
+	BigPoly secret_key;
+	EvaluationKeys evaluation_keys;
+
+	generate_parameters(parms, public_key, secret_key, evaluation_keys);
+
+	cout << "Generare Parametrii cu succes" << endl;
+	int N = 3;
+	cout << "Se creeaza obiectul he_image ..." << endl;
+	HE_Image he_image(parms, N);
+	cout << "S-a creat obiectul he_image." << endl;
+
+	// test_crt_builder(he_image.get_enc_params(), he_image.get_crt_builder());
+
+	int **result = nullptr;
+	int **mat_pixels = nullptr;
+	mat_pixels = new int*[512];
+	result = new int*[512];
+	for (int i = 0; i < 512; i++)
+	{
+		mat_pixels[i] = new int[512];
+		for (int j = 0; j < 512; j++)
+		{
+			mat_pixels[i][j] = 255;
+		}
+
+		result[i] = new int[512];
+		memset(result[i], 0, sizeof(int) * 512);
+	}
+
+	vector<vector<BigPoly> > enc_kernels;
+	int slot_count = 0;
+	cout << "Se cripteaza imaginea ..." << endl;
+	he_image.encrypt_for_filtering(mat_pixels, 512, enc_kernels, slot_count, public_key);
+	cout << "Imagine criptata cu SUCCES." << endl;
+
+	int *kernel = new int[9];
+	kernel[0] = kernel[2] = kernel[6] = kernel[8] = 0;
+	kernel[1] = kernel[3] = kernel[5] = kernel[7] = -1;
+	kernel[4] = 5;
+
+	vector<BigPoly> encoded_filter;
+	cout << "Se codifica filtrul ..." << endl;
+	he_image.encode_filter(kernel, N, encoded_filter, slot_count);
+	cout << "Filtrul codificat cu SUCCES." << endl;
+
+	vector<BigPoly> filtered_image;
+	cout << "Se filtreaza homomorfic imaginea ..." << endl;
+
+	timer.start_timer();
+	he_image.hom_filtering(enc_kernels, encoded_filter, kernel, filtered_image, evaluation_keys, secret_key);
+	elapsed_time = timer.stop_timer();
+
+	cout << "S-a terminat de filtrat homomorfic imaginea." << endl;
+	cout << "Timp filtrare homomorfica = " << elapsed_time << endl;
+
+	assert(filtered_image.size() == enc_kernels.size());
+
+	cout << "Se decripteaza imaginea dupa filtrare." << endl;
+	int *dec_image = nullptr;
+	
+	timer.start_timer();
+	he_image.omp_decrypt_after_filtering(dec_image, filtered_image, slot_count, secret_key);
+	elapsed_time = timer.stop_timer();
+
+	cout << "S-a decriptat imaginea." << endl << endl;
+	cout << "Timp decriptare paralelizata = " << elapsed_time << endl << endl;
+
+	bool ok = true;
+	for (int i = 0; i < 512; i++)
+	{
+		for (int j = 0; j < 512; j++)
+		{
+			if (mat_pixels[i][j] != dec_image[i*512+j] )
+			{
+				cout << mat_pixels[i][j] << " != " << dec_image[i * 512 + j] << endl;
+				cout << " i = " << i << ", j = " << j << endl;
+				cout << "Valori incorecte.\n";
+				ok = false;
+				i = 512;
+				break;
+			}
+		}
+	}
+
+	if (ok == true)
+	{
+		cout << "BIG SUCCES hE_IMAGE MERGE !!!" << endl;
+	}
+	else
+	{
+		cout << "ESEC : erori la filtrare." << endl;
+	}
+
+
+	vector<string> files(5);
+	files[0] = "HE_Context/parms1024.out";
+	files[1] = "HE_Context/pk1024.out";
+	files[2] = "HE_Context/sk1024.out";
+	files[3] = "HE_Context/ek1024.out";
+
+	save_parameters(files, parms, public_key, secret_key, evaluation_keys);
+
+	// cleanup
+	for (int i = 0; i < 512; i++)
+	{
+		delete[] mat_pixels[i];
+		delete[] result[i];
+	}
+	delete[] mat_pixels;
+	delete[] result;
+
+	if (dec_image != nullptr)
+	{
+		delete[] dec_image;
+	}
+
+	delete[] kernel;
+}
+
+void test_crt_builder(const EncryptionParameters parms, PolyCRTBuilder &crtbuilder)
+{
+	// pixelii imaginii au valori intre [0, 255], sunt tonuri de gri
+	cout << "Test Homomorphic Image Sharpening " << endl;
+
+	MyTimer timer;
+	cout << "Generating keys..." << endl;
+	KeyGenerator generator(parms);
+	generator.generate();
+	cout << "... key generation complete" << endl;
+	BigPoly public_key = generator.public_key();
+	BigPoly secret_key = generator.secret_key();
+	EvaluationKeys evaluation_keys = generator.evaluation_keys();
+
+	Encryptor encryptor(parms, public_key);
+	Evaluator evaluator(parms, evaluation_keys);
+
+	size_t slot_count = crtbuilder.get_slot_count();
+	cout << "slot_count = " << slot_count << endl;
+
+	vector<BigUInt> vecin_pixel_0(slot_count, BigUInt(parms.plain_modulus().bit_count(), static_cast<uint64_t>(255)));
+	cout << "crtbuilder.composing image ..." << endl;
+	BigPoly image_pixels_crt = crtbuilder.compose(vecin_pixel_0);
+	cout << "crt composing done." << endl;
+
+	vector<BigPoly> encrypted_pixels(9);
+	for (int i = 0; i < 9; i++)
+	{
+		encrypted_pixels[i] = encryptor.encrypt(image_pixels_crt); //image_pixels_crt[ i ]
+	}
+
+	int kernel[] = { 0,-1,0,-1,5,-1,0,-1,0 };
+	vector<BigPoly> kernel_coeffs(9);
+	for (int i = 0; i < 9; i++)
+	{
+		vector<BigUInt> crt_kernel(slot_count, BigUInt(parms.plain_modulus().bit_count(), static_cast<uint64_t>(abs(kernel[i]))));
+		kernel_coeffs[i] = crtbuilder.compose(crt_kernel);
+	}
+
+
+
+	timer.start_timer();
+
+	BigPoly image;
+
+#pragma omp parallel shared(image, kernel, encrypted_pixels, kernel_coeffs) \
+		private(round, i, sum, index_sum, sub, index_sub)
+	{
+		vector<BigPoly> sum; int index_sum = 0;
+		vector<BigPoly> sub; int index_sub = 0;
+
+		// #pragma omp for \
+				shared(image, kernel, encrypted_pixels, kernel_coeffs, sum, index_sum, sub, index_sub) \
+		private(i)
+		for (int i = 0; i < 9; i++)
+		{
+			// produse_intermediare[i] = evaluator.multiply_plain(encrypted_pixels[i], kernel_coeffs[i]);
+
+			if (kernel[i] < 0)
+			{
+				sub.push_back(evaluator.multiply_plain(encrypted_pixels[i], kernel_coeffs[i]));
+				index_sum++;
+			}
+			else
+			{
+				sum.push_back(evaluator.multiply_plain(encrypted_pixels[i], kernel_coeffs[i]));
+				index_sub++;
+			}
+		}
+
+		BigPoly sumas = evaluator.add_many(sum);
+		BigPoly subas = evaluator.add_many(sub);
+		image = evaluator.sub(sumas, subas);
+#pragma omp for
+		for (int round = 0; round < 8; round++)
+		{
+
+		}
+	}
+
+	cout << "Timpul prelucrarii : " << timer.stop_timer() << endl;
+
+	Decryptor decryptor(parms, secret_key);
+
+	image = decryptor.decrypt(image);
+	cout << "slot = " << crtbuilder.get_slot(image, rand() % 1024).to_double() << " ";
+}
+
+void test_field()
+{
+	print_example_banner("Example: Batching using CRT");
+
+	// Create encryption parameters
+	EncryptionParameters parms;
+
+	/*
+	For PolyCRTBuilder we need to use a plain modulus congruent to 1 modulo 2*degree(poly_modulus).
+	We could use the following parameters:
+
+	parms.poly_modulus() = "1x^4096 + 1";
+	parms.coeff_modulus() = ChooserEvaluator::default_parameter_options().at(4096);
+	parms.plain_modulus() = 1073153;
+
+	However, the primes suggested by ChooserEvaluator::default_parameter_options() are highly
+	non-optimal for PolyCRTBuilder. The problem is that the noise in a freshly encrypted ciphertext
+	will contain an additive term of the size (coeff_modulus % plain_modulus)*(largest coeff of plaintext).
+	In the case of PolyCRTBuilder, the message polynomials typically have very large coefficients
+	(of the size plain_modulus) and for a prime plain_modulus the remainder coeff_modulus % plain_modulus
+	is typically also of the size of plain_modulus. Thus we get a term of size plain_modulus^2 to
+	the noise of a freshly encrypted ciphertext! This is very bad, as normally the initial noise
+	is close to size plain_modulus.
+
+	Thus, for improved performance when using PolyCRTBuilder, we recommend the user to use their own
+	custom coeff_modulus. The prime should be of the form 2^A - D, where D is as small as possible.
+	The plain_modulus should be simultaneously chosen to be a prime so that coeff_modulus % plain_modulus == 1,
+	and that it is congruent to 1 modulo 2*degree(poly_modulus). Finally, coeff_modulus should be bounded
+	by the following strict upper bounds to ensure security:
+	/------------------------------------\
+	| poly_modulus | coeff_modulus bound |
+	| -------------|---------------------|
+	| 1x^1024 + 1  | 48 bits             |
+	| 1x^2048 + 1  | 96 bits             |
+	| 1x^4096 + 1  | 192 bits            |
+	| 1x^8192 + 1  | 384 bits            |
+	| 1x^16384 + 1 | 768 bits            |
+	\------------------------------------/
+
+	However, one issue with using such primes is that they are never NTT primes, i.e. not congruent
+	to 1 modulo 2*degree(poly_modulus), and hence might not allow for certain optimizations to be
+	used in polynomial arithmetic. Another issue is that the search-to-decision reduction of RLWE
+	does not apply to non-NTT primes, but this is not known to result in any concrete reduction
+	in the security level.
+
+	In this example we use the prime 2^190 - 42385533 as our coefficient modulus. The user should
+	try switching between this and ChooserEvaluator::default_parameter_options().at(4096) to see
+	the significant difference in the noise level at the end of the computation.
+	*/
+	parms.poly_modulus() = "1x^4096 + 1";
+	parms.coeff_modulus() = "3FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFD793F83";
+	//parms.coeff_modulus() = ChooserEvaluator::default_parameter_options().at(4096);
+	parms.plain_modulus() = 1073153;
+
+	parms.decomposition_bit_count() = 32;
+	parms.noise_standard_deviation() = ChooserEvaluator::default_noise_standard_deviation();
+	parms.noise_max_deviation() = ChooserEvaluator::default_noise_max_deviation();
+
+	cout << "Encryption parameters specify " << parms.poly_modulus().significant_coeff_count() << " coefficients with "
+		<< parms.coeff_modulus().significant_bit_count() << " bits per coefficient" << endl;
+
+	// Create the PolyCRTBuilder
+	PolyCRTBuilder crtbuilder(parms.plain_modulus(), parms.poly_modulus());
+	size_t slot_count = crtbuilder.get_slot_count();
+
+	// Create a vector of values that are to be stored in the slots. We initialize all values to 0 at this point.
+	vector<BigUInt> values(slot_count, BigUInt(parms.plain_modulus().bit_count(), static_cast<uint64_t>(0)));
+
+	// Set the first few entries of the values vector to be non-zero
+	values[0] = 15;
+	values[1] = 36;
+	values[2] = 16;
+	values[3] = 35;
+	values[4] = 40;
+	values[5] = 13;
+
+	// Now compose these into one polynomial using PolyCRTBuilder
+	cout << "Plaintext slot contents (slot, value): ";
+	for (size_t i = 0; i < 6; ++i)
+	{
+		string to_write = "(" + to_string(i) + ", " + values[i].to_dec_string() + ")";
+		to_write += (i != 5) ? ", " : "\n";
+		cout << to_write;
+	}
+	BigPoly plain_composed_poly = crtbuilder.compose(values);
+
+	// Let's do some homomorphic operations now. First we need all the encryption tools.
+	// Generate keys.
+	cout << "Generating keys..." << endl;
+	KeyGenerator generator(parms);
+	generator.generate();
+	cout << "... key generation complete" << endl;
+	BigPoly public_key = generator.public_key();
+	BigPoly secret_key = generator.secret_key();
+	EvaluationKeys evaluation_keys = generator.evaluation_keys();
+
+	// Create the encryption tools
+	Encryptor encryptor(parms, public_key);
+	Evaluator evaluator(parms, evaluation_keys);
+	Decryptor decryptor(parms, secret_key);
+
+	// Encrypt plain_composed_poly
+	cout << "Encrypting ... ";
+	BigPoly encrypted_composed_poly = encryptor.encrypt(plain_composed_poly);
+	cout << "done." << endl;
+
+	// Let's square the encrypted_composed_poly
+	cout << "Squaring the encrypted polynomial ... ";
+	BigPoly encrypted_square = evaluator.exponentiate(encrypted_composed_poly, 2);
+	cout << "done." << endl;
+	cout << "Decrypting the squared polynomial ... ";
+	BigPoly plain_square = decryptor.decrypt(encrypted_square);
+	cout << "done." << endl;
+
+	// Print the squared slots
+	cout << "Squared slot contents (slot, value): ";
+	for (size_t i = 0; i < 6; ++i)
+	{
+		string to_write = "(" + to_string(i) + ", " + crtbuilder.get_slot(plain_square, i).to_dec_string() + ")";
+		to_write += (i != 5) ? ", " : "\n";
+		cout << to_write;
+	}
+
+	// Now let's try to multiply the squares with the plaintext coefficients (3, 1, 4, 1, 5, 9, 0, 0, ..., 0).
+	// First create the coefficient vector
+	vector<BigUInt> plain_coeff_vector(slot_count, BigUInt(parms.plain_modulus().bit_count(), static_cast<uint64_t>(0)));
+	plain_coeff_vector[0] = 643892;
+	plain_coeff_vector[1] = 643892;
+	plain_coeff_vector[2] = 643892;
+	plain_coeff_vector[3] = 643892;
+	plain_coeff_vector[4] = 643892;
+	plain_coeff_vector[5] = 643892;
+
+	// Use PolyCRTBuilder to compose plain_coeff_vector into a polynomial
+	BigPoly plain_coeff_poly = crtbuilder.compose(plain_coeff_vector);
+
+	// Print the coefficient vector
+	cout << "Coefficient slot contents (slot, value): ";
+	for (size_t i = 0; i < 6; ++i)
+	{
+		string to_write = "(" + to_string(i) + ", " + crtbuilder.get_slot(plain_coeff_poly, i).to_dec_string() + ")";
+		to_write += (i != 5) ? ", " : "\n";
+		cout << to_write;
+	}
+
+	// Now use multiply_plain to multiply each encrypted slot with the corresponding coefficient
+	cout << "Multiplying squared slots with the coefficients ... ";
+	BigPoly encrypted_scaled_square = evaluator.multiply_plain(encrypted_square, plain_coeff_poly);
+	cout << " done." << endl;
+
+	cout << "Decrypting the scaled squared polynomial ... ";
+	BigPoly plain_scaled_square = decryptor.decrypt(encrypted_scaled_square);
+	cout << "done." << endl;
+
+	// Print the scaled squared slots
+	cout << "Scaled squared slot contents (slot, value): ";
+	for (size_t i = 0; i < 6; ++i)
+	{
+		string to_write = "(" + to_string(i) + ", " + crtbuilder.get_slot(plain_scaled_square, i).to_dec_string() + ")";
+		to_write += (i != 5) ? ", " : "\n";
+		cout << to_write;
+	}
+
+	// How much noise did we end up with?
+	cout << "Noise in the result: " << inherent_noise(encrypted_scaled_square, parms, secret_key).significant_bit_count()
+		<< "/" << inherent_noise_max(parms).significant_bit_count() << " bits" << endl;
 
 }
 

@@ -96,3 +96,9 @@ void hom_image_sharpening();
 void hom_k_means();
 
 void test_op(bool load = false);
+
+void test_crt_builder(const EncryptionParameters parms, PolyCRTBuilder &crtbuilder);
+
+void test_HE_image();
+
+void test_field();
